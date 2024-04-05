@@ -36,6 +36,10 @@ show_pages(
         Page("About.py", "关于", "💻", in_section=True),
     ])
 
+# 检查 caption_generated 变量是否在会话状态中，如果不存在则设置为 False
+if 'caption_generated' not in st.session_state:
+    st.session_state.caption_generated = False
+
 # URL输入框
 url_input = st.text_input("请输入图片URL，并按回车键确认:")
 if (url_input != "") and (url_input != None):
@@ -62,22 +66,6 @@ if uploaded_file is not None:
     try:
         image = Image.open(uploaded_file)
         st.image(image, caption='图片上传成功！')
-        # try:
-        #     # 暂时使用绝对路径
-        #     absolute_temp_dir = r'D:\new desktop_\GraduationProject\demos\catr-master\Temp'
-        #     # 创建 temp 文件夹（如果不存在）
-        #     os.makedirs(absolute_temp_dir, exist_ok=True)
-        #     # 生成图片保存路径
-        #     image_path = os.path.join(absolute_temp_dir, "tempImage.jpg")
-        #     # 将上传的文件内容写入到本地文件
-        #     # with open(image_path, "wb") as f:
-        #     #     f.write(uploaded_file.read())
-        #     # 显示成功提示信息
-        #     #st.success("图片已成功保存到本地！")
-        #     # 使用本地上传的图片
-        #     image = Image.open(image_path)
-        # except Exception as e:
-        #     st.error(f"未能有效加载图片到本地！请重试！ {e}")
     except:
         st.error("图片上传失败，请上传有效的图片格式！")
 
@@ -106,44 +94,72 @@ def generate_captioned_image(image, caption, font_size, font_color):
     # 绘制字幕文本
     draw.text(text_position, caption, font=font, fill=font_color)
 
+#语言选择
+LanguageOptions = st.multiselect(
+     '请选择生成字幕的语言（默认只生成英文）：',
+     ('中文', 'English'))
+#模型选择
+ModelOptions = st.multiselect(
+     '请选择生成字幕的模型（默认只选择模型A，后面是其准确率）：',
+     ('模型A，✔️73.4%', '模型B，✔️70.6%','模型C，✔️71.1%'))
+
 # 导入图片后执行
-if 'image' in locals():
-    # 检查 caption_generated 变量是否在会话状态中，如果不存在则设置为 False
-    if 'caption_generated' not in st.session_state:
-        st.session_state.caption_generated = False
+if st.button("生成图像字幕"):
+    if 'image' in locals():
+        if not st.session_state.caption_generated:
+            # 调用生成字幕的函数并获取结果
+            with st.spinner(text="正在生成字幕，请稍等..."):
+                # 初始化 CaptionGenerator 实例 todo:不要每次生成都初始化一次
+                checkpoint_paths = []  # 模型的checkpoint路径列表
+                if '模型A，✔️73.4%' in ModelOptions:
+                    checkpoint_paths.append('checkpointA.pth')
+                if '模型B，✔️70.6%' in ModelOptions:
+                    checkpoint_paths.append('checkpointB.pth')
+                if '模型C，✔️71.1%' in ModelOptions:
+                    checkpoint_paths.append('checkpointC.pth')
+                #默认加载模型A
+                if len(ModelOptions) == 0:
+                    checkpoint_paths.append('checkpointA.pth')
 
-    if not st.session_state.caption_generated:
-        # 调用生成字幕的函数并获取结果
-        with st.spinner(text="正在生成字幕，请稍等..."):
-            # 初始化 CaptionGenerator 实例 todo:不要每次生成都初始化一次
-            checkpoint_paths = ['checkpoint1.pth', 'checkpoint2.pth','checkpoint3.pth']  # 模型的checkpoint路径列表
-            caption_generator = captionGenerate.CaptionGenerator(checkpoint_paths)
-            result = caption_generator.generate_caption(image)
+                caption_generator = captionGenerate.CaptionGenerator(checkpoint_paths)
+                result = caption_generator.generate_caption(image)
 
-            for caption_item in result:
-                # 使用翻译api将生成的字幕为中文
-                translator = Translator()
-                translated_result = translator.translate(caption_item, src='en', dest='zh-cn').text
-                # 添加返回结果到默认字幕列表中,并保存到会话中
-                default_captions.append(translated_result)
+                #判断用户选择了生成哪种语言的字幕
+                if '中文' in LanguageOptions:
+                    for caption_item in result:
+                        # 使用翻译api将生成的字幕翻译为中文
+                        translator = Translator()
+                        translated_result = translator.translate(caption_item, src='en', dest='zh-cn').text
+                        # 添加翻译后的结果到默认字幕列表中
+                        default_captions.append(translated_result)
+                if 'English' in LanguageOptions:
+                    for caption_item in result:
+                        default_captions.append(caption_item)
+                #用户没选择，默认生成英文
+                if len(LanguageOptions) == 0:
+                    for caption_item in result:
+                        default_captions.append(caption_item)
 
-            #将生成的字幕存到session中
-            #default_captions.append(result)
-            st.session_state.default_captions = default_captions[:]
+                # 将生成的字幕存到session中
+                st.session_state.default_captions = default_captions[:]
 
-            # 设置标志变量为 True，表示已生成字幕,防止页面重加载一直生成
-            st.session_state.caption_generated = True
-        st.success("字幕生成成功！")
+                # 设置标志变量为 True，表示已生成字幕,防止页面重加载一直生成，同时显示字幕编辑选单
+                st.session_state.caption_generated = True
 
-    # 显示选取按钮和字幕编辑选单
-    chosen_caption = st.selectbox("请选择一条图片字幕以嵌入到图片中：", options=st.session_state.default_captions)
-    chosen_font = st.selectbox("选择字体:", options=default_fonts)
-    chosen_font_path = default_fonts[chosen_font]
+            st.success("字幕生成成功！")
+    else:
+        st.warning("请上传图片后再操作！")
 
-    # 字体样式选项
-    font_size = st.slider("选择字体大小:", min_value=10, max_value=50, step=2, value=25)
-    font_color = st.color_picker("选择字体颜色:", "#000000")
-    if st.button("嵌入字幕到图片"):
-        st.empty()  # 清空输出
-        generate_captioned_image(image, chosen_caption, font_size, font_color)
-        st.image(image, caption='已更新为嵌入图像字幕后的图像！')
+# 显示字幕编辑选单
+if st.session_state.caption_generated:
+        chosen_caption = st.selectbox("请选择一条图片字幕以嵌入到图片中：", options=st.session_state.default_captions)
+        chosen_font = st.selectbox("选择字体:", options=default_fonts)
+        chosen_font_path = default_fonts[chosen_font]
+
+        # 字体样式选项
+        font_size = st.slider("选择字体大小:", min_value=10, max_value=50, step=2, value=25)
+        font_color = st.color_picker("选择字体颜色:", "#000000")
+        if st.button("嵌入字幕到图片"):
+            st.empty()  # 清空输出
+            generate_captioned_image(image, chosen_caption, font_size, font_color)
+            st.image(image, caption='已更新为嵌入图像字幕后的图像！')
