@@ -1,10 +1,6 @@
-import googletrans
 import streamlit as st
 from PIL import Image
 import requests
-import subprocess
-import tempfile
-import os
 import io
 from io import BytesIO
 from PIL import ImageDraw
@@ -41,7 +37,7 @@ if 'caption_generated' not in st.session_state:
     st.session_state.caption_generated = False
 
 # URL输入框
-url_input = st.text_input("请输入图片URL，并按回车键确认:")
+url_input = st.text_input("🔗 请输入图片URL，并按回车键确认:")
 if (url_input != "") and (url_input != None):
     response = requests.get(url_input)
     image = Image.open(BytesIO(response.content))
@@ -59,7 +55,7 @@ def check_image_format(image):
 
 
 # 导入本地图片按钮
-uploaded_file = st.file_uploader("或者，您可以点击右侧按钮导入本地图片:", type=["jpg", "jpeg", "png"])
+uploaded_file = st.file_uploader("📤 或者，您可以点击右侧按钮导入本地图片:", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
     # 使用本地上传的图片
@@ -96,11 +92,11 @@ def generate_captioned_image(image, caption, font_size, font_color):
 
 #语言选择
 LanguageOptions = st.multiselect(
-     '请选择生成字幕的语言（默认只生成英文）：',
+     '💬 请选择生成字幕的语言（默认只生成英文）：',
      ('中文', 'English'))
 #模型选择
 ModelOptions = st.multiselect(
-     '请选择生成字幕的模型（默认只选择模型A，后面是其准确率）：',
+     '💡 请选择生成字幕的模型（默认只选择模型A，后面是其准确率）：',
      ('模型A，✔️73.4%', '模型B，✔️70.6%','模型C，✔️71.1%'))
 
 # 导入图片后执行
@@ -108,7 +104,7 @@ if st.button("生成图像字幕"):
     if 'image' in locals():
         if not st.session_state.caption_generated:
             # 调用生成字幕的函数并获取结果
-            with st.spinner(text="正在生成字幕，请稍等..."):
+            with st.spinner(text="🖌️ 正在生成字幕，请稍等..."):
                 # 初始化 CaptionGenerator 实例 todo:不要每次生成都初始化一次
                 checkpoint_paths = []  # 模型的checkpoint路径列表
                 if '模型A，✔️73.4%' in ModelOptions:
@@ -152,13 +148,13 @@ if st.button("生成图像字幕"):
 
 # 显示字幕编辑选单
 if st.session_state.caption_generated:
-        chosen_caption = st.selectbox("请选择一条图片字幕以嵌入到图片中：", options=st.session_state.default_captions)
-        chosen_font = st.selectbox("选择字体:", options=default_fonts)
+        chosen_caption = st.selectbox("🖼️ 请选择一条图片字幕以嵌入到图片中：", options=st.session_state.default_captions)
+        chosen_font = st.selectbox("🗛 选择字体:", options=default_fonts)
         chosen_font_path = default_fonts[chosen_font]
 
         # 字体样式选项
-        font_size = st.slider("选择字体大小:", min_value=10, max_value=50, step=2, value=25)
-        font_color = st.color_picker("选择字体颜色:", "#000000")
+        font_size = st.slider("🗚 选择字体大小:", min_value=10, max_value=50, step=2, value=25)
+        font_color = st.color_picker("🎨 选择字体颜色:", "#000000")
         if st.button("嵌入字幕到图片"):
             st.empty()  # 清空输出
             generate_captioned_image(image, chosen_caption, font_size, font_color)
