@@ -65,9 +65,9 @@ def check_image_format(image):
         return False
 
 # 定义生成图片字幕的函数
-def generate_captioned_image(image, caption, font_size, font_color):
+def generate_captioned_image(image, caption, font_size, font_color, chosen_position):
     draw = ImageDraw.Draw(image)  # 创建图像绘制对象
-    font = ImageFont.truetype(chosen_font_path, font_size)  # 指定字体和大小，使用 Arial 字体
+    font = ImageFont.truetype(chosen_font_path, font_size)
 
     # 设置字体样式，将十六进制颜色值转换为 RGB 元组
     font_color = tuple(int(font_color.lstrip('#')[i:i + 2], 16) for i in (0, 2, 4))
@@ -77,7 +77,7 @@ def generate_captioned_image(image, caption, font_size, font_color):
     image_width, image_height = image.size  # 获取图片的宽度和高度
 
     # 计算字幕文本的位置，使其位于图片中心的下方
-    text_position = ((image_width - text_width) // 2, image_height - text_height - 10)
+    text_position = ((image_width - text_width) // 2, image_height - text_height - chosen_position)
 
     # 绘制字幕文本
     draw.text(text_position, caption, font=font, fill=font_color)
@@ -147,7 +147,8 @@ if not st.session_state.login_state:
                 st.success("登录成功！")
                 time.sleep(1)  # 延迟一秒
                 st.session_state.login_state = True
-                st.empty()  # 清除登录界面
+                st.empty()
+                st.rerun()  # 强制重新运行应用程序
             else:
                 st.error("登录失败，请检查用户名或者密码后重试！")
 
@@ -195,7 +196,7 @@ if st.session_state.login_state == True:
             if not st.session_state.caption_generated:
                 # 调用生成字幕的函数并获取结果
                 with st.spinner(text="🖌️ 正在生成字幕，请稍等..."):
-                    # 初始化 CaptionGenerator 实例 todo:不要每次生成都初始化一次
+                    # 初始化 CaptionGenerator 实例
                     checkpoint_paths = []  # 模型的checkpoint路径列表
                     if '模型A，✔️73.4%' in ModelOptions:
                         checkpoint_paths.append('checkpointA.pth')
@@ -238,13 +239,13 @@ if st.session_state.login_state == True:
     # 显示字幕编辑选单
     if st.session_state.caption_generated:
             chosen_caption = st.selectbox("🖼️ 请选择一条图片字幕以嵌入到图片中：", options=st.session_state.default_captions)
+            # 字体样式选项
             chosen_font = st.selectbox("🗛 选择字体:", options=default_fonts)
             chosen_font_path = default_fonts[chosen_font]
-
-            # 字体样式选项
             font_size = st.slider("🗚 选择字体大小:", min_value=10, max_value=50, step=2, value=25)
+            chosen_position = st.slider("🗚 选择文字位置:", min_value=10, max_value=image.height - 10, step=5, value=20)
             font_color = st.color_picker("🎨 选择字体颜色:", "#000000")
             if st.button("嵌入字幕到图片"):
                 st.empty()  # 清空输出
-                generate_captioned_image(image, chosen_caption, font_size, font_color)
+                generate_captioned_image(image, chosen_caption, font_size, font_color,chosen_position)
                 st.image(image, caption='已更新为嵌入图像字幕后的图像！')

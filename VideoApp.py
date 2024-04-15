@@ -2,21 +2,29 @@ import streamlit as st
 import cv2
 import os
 from PIL import Image
-from captionGenerate import CaptionGenerator  # 假设你有用于生成字幕的模块
-
+import captionGenerate
+import requests
+import io
+from io import BytesIO
+from PIL import ImageDraw
+from PIL import ImageFont
+from st_pages import Page, Section, show_pages, add_page_title, hide_pages
+import mysql.connector
+from mysql.connector import Error
+import time
 
 def videoProcess(path):
     '''读取mp4文件并进行分割'''
     cam = cv2.VideoCapture(path)
     try:
         # 创建名为data的文件夹
-        if not os.path.exists('Images'):
-            os.makedirs('Images')
-            print('created successfully ')
+        if not os.path.exists('Frames'):
+            os.makedirs('Frames')
+            print('成功创建切帧文件夹')
 
     # 如果未创建，则引发错误
     except OSError:
-        print('Error: Creating directory of data')
+        print('Error: 创建切帧文件夹时错误！')
 
     # 定义保存图片函数
     # image:要保存的图片名字
@@ -26,23 +34,73 @@ def videoProcess(path):
         address = addr + str(num) + '.jpg'
         cv2.imwrite(address, image)
 
-    # reading from frame
-    ret, frame = cam.read()  # ret为布尔值 frame保存着视频中的每一帧图像 是个三维矩阵
+    # 获取视频的总帧数
+    total_frames = int(cam.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    frames_to_capture = 3  # 要截取的帧数
+    interval = total_frames // frames_to_capture  # 计算截取帧的间隔
+
     i = 0
-    timeF = 60  # 设置要保存图像的间隔 60为每隔60帧保存一张图像
-    j = 0
-    while ret:
-        i = i + 1
-        # 如果视频仍然存在，继续创建图像
-        if i % timeF == 0:
-            # 呈现输出图片的数量
-            j = j + 1
-            save_image(frame, './Images/', j)
-            print('save image:', j)
+    frame_index = 0
+    while i < frames_to_capture:
+        # 设置视频的帧索引
+        cam.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
         ret, frame = cam.read()
-        # 一旦完成释放所有的空间和窗口
+        if not ret:
+            break  # 如果无法读取帧，停止循环
+        save_image(frame, './Frames/', i + 1)
+        i += 1
+        # 更新下一个要读取的帧的索引
+        frame_index += interval
+
     cam.release()
     cv2.destroyAllWindows()
+
+# 定义嵌入图片字幕的函数
+def generate_captioned_image(image, caption, font_size, font_color):
+    draw = ImageDraw.Draw(image)  # 创建图像绘制对象
+    chosen_font_path = "simhei.ttf"
+    font = ImageFont.truetype(chosen_font_path, font_size)
+
+    # 设置字体样式，将十六进制颜色值转换为 RGB 元组
+    font_color = tuple(int(font_color.lstrip('#')[i:i + 2], 16) for i in (0, 2, 4))
+
+    # 在图片下方添加字幕
+    text_width, text_height = draw.textsize(caption, font=font)  # 获取字幕文本的宽度和高度
+    image_width, image_height = image.size  # 获取图片的宽度和高度
+
+    # 计算字幕文本的位置，使其位于图片中心的下方
+    text_position = ((image_width - text_width) // 2, image_height - text_height - 70)
+
+    # 绘制字幕文本
+    draw.text(text_position, caption, font=font, fill=font_color)
+
+def video_predict():
+    st.markdown('#### 视频描述:')
+
+    # 初始化 CaptionGenerator 实例
+    checkpoint_paths = []  # 模型的checkpoint路径列表
+    checkpoint_paths.append('checkpointA.pth')
+
+    # 初始化 Captions
+    captions = []
+
+    for filename in os.listdir("Frames"):
+        # 拼接文件的完整路径
+        file_path = os.path.join("Frames", filename)
+
+        # 检查文件是否为图片文件
+        if os.path.isfile(file_path) and filename.lower().endswith((".jpg", ".jpeg", ".png")):
+            # 读取图像
+            image_path = file_path
+            image = Image.open(image_path)
+            caption_generator = captionGenerate.CaptionGenerator(checkpoint_paths)
+            result = caption_generator.generate_caption(image)
+            for caption_item in result:
+                font_size = 22
+                font_color = "#FFFFFF"
+                generate_captioned_image(image, caption_item, font_size, font_color)
+                st.image(image,width = 500)
 
 
 # Streamlit 应用程序
@@ -64,17 +122,19 @@ def main():
         videoProcess(video_path)
         video_predict()
 
-    if uploaded_video is not None:
-        st.video(uploaded_video)
-
-        # 为视频生成字幕
-        captions = generate_captions(uploaded_video)
-
-        # 显示带有字幕的图像
-        # for frame, caption in captions:
-        #     st.image(frame, caption=caption)
-        for frame in captions:
-            st.image(frame)
+        # 删除切帧的文件夹路径
+        folder_path = 'Frames'
+        try:
+            # 清空文件夹内的内容
+            files = os.listdir(folder_path)
+            for file in files:
+                file_path = os.path.join(folder_path, file)
+                os.remove(file_path)
+             # 删除文件夹及其内容
+            os.rmdir(folder_path)
+            print("切帧文件夹删除成功")
+        except OSError as e:
+            print(f"切帧删除文件夹失败: {e}")
 
 if __name__ == "__main__":
     main()

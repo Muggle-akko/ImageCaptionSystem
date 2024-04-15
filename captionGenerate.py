@@ -29,6 +29,7 @@ class CaptionGenerator:
             model.load_state_dict(checkpoint['model'])
             self.models.append(model)
 
+
     def generate_caption(self,image):
         # 读取图像
         # image_path = 'Temp/tempImage.jpg'
