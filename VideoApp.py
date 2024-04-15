@@ -86,7 +86,7 @@ def videoProcess(path):
     cv2.destroyAllWindows()
 
 # 定义嵌入图片字幕的函数
-def generate_captioned_image(image, caption, font_size, font_color):
+def generate_captioned_image(image, caption, font_size, font_color, chosen_position):
     draw = ImageDraw.Draw(image)  # 创建图像绘制对象
     chosen_font_path = "simhei.ttf"
     font = ImageFont.truetype(chosen_font_path, font_size)
@@ -99,7 +99,7 @@ def generate_captioned_image(image, caption, font_size, font_color):
     image_width, image_height = image.size  # 获取图片的宽度和高度
 
     # 计算字幕文本的位置，使其位于图片中心的下方
-    text_position = ((image_width - text_width) // 2, image_height - text_height - 70)
+    text_position = ((image_width - text_width) // 2, image_height - text_height - chosen_position)
 
     # 绘制字幕文本
     draw.text(text_position, caption, font=font, fill=font_color)
@@ -110,9 +110,14 @@ def video_predict():
     checkpoint_paths.append('checkpointA.pth')
 
     # 初始化数据
-    captions = []
-    images_to_show = []
     caption_generator = captionGenerate.CaptionGenerator(checkpoint_paths)
+    # 用于存放图片概述的列表
+    generate_captions = []
+    #用于存放原切片的列表
+    images_origin = []
+    # 用于存放处理后图片的列表
+    images_to_show = []
+
 
     for filename in os.listdir("Frames"):
         # 拼接文件的完整路径
@@ -123,21 +128,29 @@ def video_predict():
             # 读取图像
             image_path = file_path
             image = Image.open(image_path)
+            # 将上传的原始图片存到session中
+            images_origin.append(image)
+            st.session_state.images_origin = images_origin[:]
+
             result = caption_generator.generate_caption(image)
+
             for caption_item in result:
                 # 使用翻译api将生成的字幕翻译为中文
                 translated_result = translate_with_baidu(caption_item, source_language='en', target_language='zh')
+                generate_captions.append(translated_result)
+                # 将生成的字幕存到session中
+                st.session_state.generate_captions = generate_captions[:]
+
                 #设置字体参数
                 font_size = 50
                 font_color = "#000000"
-                generate_captioned_image(image, translated_result, font_size, font_color)
-                # st.image(image,width = 300)
+                temp_image = image.copy()
+                chosen_position = 70
+                generate_captioned_image(temp_image, translated_result, font_size, font_color, chosen_position)
                 # 将处理后的图片添加到待展示的图片列表中
-                images_to_show.append(image)
-                # 如果待展示的图片数量达到了3张，就展示这三张图片
+                images_to_show.append(temp_image)
                 if len(images_to_show) == 6:
                     st.image(images_to_show, width=350)
-                    # 清空待展示的图片列表，为下一组图片做准备
                     images_to_show = []
 
 
@@ -146,9 +159,21 @@ def main():
     st.title("视频故事概括")
     st.markdown("---")
 
+    # 检查 caption_generated 变量是否在会话状态中，如果不存在则设置为 False
+    if 'VideoCaption_generated' not in st.session_state:
+        st.session_state.VideoCaption_generated = False
+
+    #用于存放图片概述切片的列表
+    images_origin = []
+
+    # 默认字体列表
+    default_fonts = {"黑体": "simhei.ttf", "微软雅黑": "msyhbd.ttc", "楷体": "simkai.ttf", "新宋体": "simsun.ttc"}
+
     vid_upload = st.file_uploader("📤 上传视频文件 (.mp4)", type=["mp4"])
 
-    if vid_upload != None:
+
+    if vid_upload != None and not st.session_state.VideoCaption_generated:
+
         # 调用生成字幕的函数并获取结果
         with st.spinner(text="🖌️ 正在加载视频，请稍等..."):
             video_bytes = vid_upload.read()
@@ -163,7 +188,8 @@ def main():
             videoProcess(video_path)
         with st.spinner(text="🖌️ 正在为切片生成概述，请稍等..."):
             video_predict()
-
+            # 设置标志变量为 True，表示已生成字幕,防止页面重加载一直生成，同时显示字幕编辑选单
+            st.session_state.VideoCaption_generated = True
             # 删除切帧的临时文件夹路径
             folder_path = 'Frames'
             try:
@@ -177,6 +203,30 @@ def main():
                 print("切帧文件夹删除成功")
             except OSError as e:
                 print(f"切帧删除文件夹失败: {e}")
+
+    #用户自定义文字样式模块
+    if st.session_state.VideoCaption_generated:
+        # 字体样式选项
+        chosen_font = st.selectbox("🗛 选择字体:", options=default_fonts)
+        chosen_font_path = default_fonts[chosen_font]
+        font_size = st.slider("🗚 选择字体大小:", min_value=10, max_value=100, step=2, value=25)
+        chosen_position = st.slider("📝 调整文字位置:", min_value=10, max_value=500, step=5, value=50)
+        font_color = st.color_picker("🎨 选择字体颜色:", "#000000")
+        chosen_captions = st.session_state.generate_captions
+        images_to_show = []
+        if st.button("修改文字样式"):
+            st.empty()  # 清空输出
+            for index, images in enumerate(st.session_state.images_origin):
+                if index < len(chosen_captions):
+                    chosen_caption = chosen_captions[index]
+                else:
+                    chosen_caption = "字幕出错，请联系开发者"  # 防止读取错误程序终止的情况
+                temp_image = images.copy()
+                generate_captioned_image(temp_image, chosen_caption, font_size, font_color, chosen_position)
+                images_to_show.append(temp_image)
+                if len(images_to_show) == 6:
+                    st.image(images_to_show, width=350)
+                    images_to_show = []
 
 if __name__ == "__main__":
     main()

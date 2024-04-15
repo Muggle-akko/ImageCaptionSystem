@@ -161,8 +161,6 @@ if st.session_state.login_state == True:
         image = Image.open(BytesIO(response.content))
         st.image(image, caption='图片上传成功！')
 
-
-
     # 导入本地图片按钮
     uploaded_file = st.file_uploader("📤 或者，您可以点击右侧按钮导入本地图片:", type=["jpg", "jpeg", "png"])
 
@@ -243,7 +241,7 @@ if st.session_state.login_state == True:
             chosen_font = st.selectbox("🗛 选择字体:", options=default_fonts)
             chosen_font_path = default_fonts[chosen_font]
             font_size = st.slider("🗚 选择字体大小:", min_value=10, max_value=50, step=2, value=25)
-            chosen_position = st.slider("📝 选择文字位置:", min_value=10, max_value=image.height - 10, step=5, value=20)
+            chosen_position = st.slider("📝 调整文字位置:", min_value=10, max_value=image.height - 10, step=5, value=20)
             font_color = st.color_picker("🎨 选择字体颜色:", "#000000")
             if st.button("嵌入字幕到图片"):
                 st.empty()  # 清空输出
