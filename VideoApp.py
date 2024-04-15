@@ -12,6 +12,35 @@ from st_pages import Page, Section, show_pages, add_page_title, hide_pages
 import mysql.connector
 from mysql.connector import Error
 import time
+import hashlib
+
+#百度翻译API调用
+def translate_with_baidu(text, source_language='en', target_language='zh'):
+    # 这里填入百度翻译API应用信息
+    app_id = '20240406002016043'
+    app_key = 'b2UhlL_ZcDSSClFhWlcC'
+
+    url = 'https://fanyi-api.baidu.com/api/trans/vip/translate'
+    payload = {
+        'q': text,
+        'from': source_language,
+        'to': target_language,
+        'appid': app_id,
+        'salt': 'random_salt',  # 随机数
+        'sign': '',  # 签名
+    }
+    sign_str = app_id + text + 'random_salt' + app_key
+    payload['sign'] = hashlib.md5(sign_str.encode()).hexdigest()
+
+    response = requests.post(url, data=payload)
+    translation = response.json()
+    if 'error_code' in translation:
+        print("Translation Error:", translation['error_code'])
+        return None
+    elif 'trans_result' in translation:
+        return translation['trans_result'][0]['dst']
+    else:
+        return None
 
 def videoProcess(path):
     '''读取mp4文件并进行分割'''
@@ -37,7 +66,7 @@ def videoProcess(path):
     # 获取视频的总帧数
     total_frames = int(cam.get(cv2.CAP_PROP_FRAME_COUNT))
 
-    frames_to_capture = 3  # 要截取的帧数
+    frames_to_capture = 6  # 要截取的帧数
     interval = total_frames // frames_to_capture  # 计算截取帧的间隔
 
     i = 0
@@ -76,14 +105,14 @@ def generate_captioned_image(image, caption, font_size, font_color):
     draw.text(text_position, caption, font=font, fill=font_color)
 
 def video_predict():
-    st.markdown('#### 视频描述:')
-
     # 初始化 CaptionGenerator 实例
     checkpoint_paths = []  # 模型的checkpoint路径列表
     checkpoint_paths.append('checkpointA.pth')
 
-    # 初始化 Captions
+    # 初始化数据
     captions = []
+    images_to_show = []
+    caption_generator = captionGenerate.CaptionGenerator(checkpoint_paths)
 
     for filename in os.listdir("Frames"):
         # 拼接文件的完整路径
@@ -94,13 +123,22 @@ def video_predict():
             # 读取图像
             image_path = file_path
             image = Image.open(image_path)
-            caption_generator = captionGenerate.CaptionGenerator(checkpoint_paths)
             result = caption_generator.generate_caption(image)
             for caption_item in result:
-                font_size = 22
-                font_color = "#FFFFFF"
-                generate_captioned_image(image, caption_item, font_size, font_color)
-                st.image(image,width = 500)
+                # 使用翻译api将生成的字幕翻译为中文
+                translated_result = translate_with_baidu(caption_item, source_language='en', target_language='zh')
+                #设置字体参数
+                font_size = 50
+                font_color = "#000000"
+                generate_captioned_image(image, translated_result, font_size, font_color)
+                # st.image(image,width = 300)
+                # 将处理后的图片添加到待展示的图片列表中
+                images_to_show.append(image)
+                # 如果待展示的图片数量达到了3张，就展示这三张图片
+                if len(images_to_show) == 6:
+                    st.image(images_to_show, width=350)
+                    # 清空待展示的图片列表，为下一组图片做准备
+                    images_to_show = []
 
 
 # Streamlit 应用程序
@@ -111,30 +149,34 @@ def main():
     vid_upload = st.file_uploader("📤 上传视频文件 (.mp4)", type=["mp4"])
 
     if vid_upload != None:
-        video_bytes = vid_upload.read()
-        # 播放视频
-        with open("temp_video.mp4", "wb") as f:
-            f.write(video_bytes)
-        # 获取视频文件的本地路径
-        video_path = "temp_video.mp4"
-        st.video(video_bytes)
-        # 调用其他函数，并将视频路径作为参数传递
-        videoProcess(video_path)
-        video_predict()
+        # 调用生成字幕的函数并获取结果
+        with st.spinner(text="🖌️ 正在加载视频，请稍等..."):
+            video_bytes = vid_upload.read()
+            # 播放视频
+            with open("temp_video.mp4", "wb") as f:
+                f.write(video_bytes)
+            # 获取视频文件的本地路径
+            video_path = "temp_video.mp4"
+            st.video(video_bytes)
+            # 调用其他函数，并将视频路径作为参数传递
+        with st.spinner(text="🖌️ 正在将视频切片，请稍等..."):
+            videoProcess(video_path)
+        with st.spinner(text="🖌️ 正在为切片生成概述，请稍等..."):
+            video_predict()
 
-        # 删除切帧的文件夹路径
-        folder_path = 'Frames'
-        try:
-            # 清空文件夹内的内容
-            files = os.listdir(folder_path)
-            for file in files:
-                file_path = os.path.join(folder_path, file)
-                os.remove(file_path)
-             # 删除文件夹及其内容
-            os.rmdir(folder_path)
-            print("切帧文件夹删除成功")
-        except OSError as e:
-            print(f"切帧删除文件夹失败: {e}")
+            # 删除切帧的临时文件夹路径
+            folder_path = 'Frames'
+            try:
+                # 清空文件夹内的内容
+                files = os.listdir(folder_path)
+                for file in files:
+                    file_path = os.path.join(folder_path, file)
+                    os.remove(file_path)
+                 # 删除文件夹及其内容
+                os.rmdir(folder_path)
+                print("切帧文件夹删除成功")
+            except OSError as e:
+                print(f"切帧删除文件夹失败: {e}")
 
 if __name__ == "__main__":
     main()
